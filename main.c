@@ -3,23 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum NodeType
-{
-
-	NUM,
-	ADD,
-	SUB,
-	MUL,
-	DIV
-
-};
-
 struct Node
 {
 
-	struct Node* L;
-	struct Node* R;
-	unsigned char Type;
+	size_t NumChildren;
+	struct Node* Children;
+	char* Operations;
 	float Value;
 	
 };
@@ -66,7 +55,8 @@ Node* CreateTree(Node* tree, char* start, char* end)
 
 	}
 
-	// find operation, find split point
+	tree->Operations = (char*) malloc(sizeof(Node));
+	if (tree->Operations == NULL) return tree;
 
 	int brackpos = 0; // ( = +1, ) = -1
 
@@ -74,53 +64,44 @@ Node* CreateTree(Node* tree, char* start, char* end)
 	char* lastclose;
 
 	char* i = start;
+	char a;
 
-	char* split;
+	tree->NumChildren = 0;
 
-	tree->L = NULL;
+	// need a temp array of split points
 
-	while (i < end && tree->Type == NUM)
+	char** splits = (char**) malloc(sizeof(char*));
+
+	while (i <= end)
 	{
 
-		switch (*i)
+		a = *i;
+
+		if (a == '(')
 		{
 
-			case '(':
-				brackpos++;
-				if (firstopen == NULL) firstopen = i;
-				break;
-			case ')':
-				brackpos--;
-				lastclose = i;
-				break;
-			case '+':
-				if (brackpos == 0)
-				{
-					tree->Type = ADD;
-					split = i;
-				}
-				break;
-			case '-':
-				if (brackpos == 0)
-				{
-					tree->Type = SUB;
-					split = i;
-				}
-				break;
-			case '*':
-				if (brackpos == 0)
-				{
-					tree->Type = MUL;
-					split = i;
-				}
-				break;
-			case '/':
-				if (brackpos == 0)
-				{
-					tree->Type = DIV;
-					split = i;
-				}
-				break;
+			brackpos++;
+			if (firstopen == NULL) firstopen = i;
+
+		}
+		else if (a == ')')
+		{
+
+			brackpos--;
+			lastclose = i;
+
+		}
+		else if (brackpos == 0 && (a == '+' || a == '-' || a == '*' || a == '/'))
+		{
+
+			if (tree->NumChildren == 0) tree->NumChildren = 1;
+			tree->NumChildren++;
+
+			splits = (char**) realloc(splits, (tree->NumChildren - 1) * sizeof(char*));
+			tree->Operations = (char*) realloc(tree->Operations, (tree->NumChildren - 1) * sizeof(char));
+
+			splits[tree->NumChildren - 2] = i;
+			tree->Operations[tree->NumChildren - 2] = a;
 
 		}
 
@@ -128,17 +109,19 @@ Node* CreateTree(Node* tree, char* start, char* end)
 
 	}
 
-	if (tree->Type == NUM)
+	if (tree->NumChildren == 0)
 	{
 
-		if (firstopen == NULL) // number
+		free(splits);
+
+		if (firstopen == NULL) // Get value
 		{
 
 			end[1] = '\0';
 			tree->Value = atof(start);
 
 		}
-		else // paranthesis
+		else // Paranthesis recursion
 		{
 
 			tree = CreateTree(tree, firstopen + 1, lastclose - 1);
@@ -146,11 +129,26 @@ Node* CreateTree(Node* tree, char* start, char* end)
 		}
 
 	}
-	else
+	else // Split recursion
 	{
 
-		tree->L = CreateTree(tree->L, start, split - 1);
-		tree->R = CreateTree(tree->R, split + 1, end);
+		tree->Children = (Node*) malloc(tree->NumChildren * sizeof(Node));
+		if (tree->Children == NULL) return tree;
+
+		CreateTree(tree->Children, start, splits[0] - 1);
+
+		size_t i;
+
+		for (i = 1; i < tree->NumChildren - 1; i++)
+		{
+
+			CreateTree(tree->Children + i, splits[i - 1] + 1, splits[i] - 1);
+
+		}
+
+		CreateTree(tree->Children + tree->NumChildren - 1, splits[tree->NumChildren - 2] + 1, end);
+
+		free(splits);
 
 	}
 
@@ -158,44 +156,56 @@ Node* CreateTree(Node* tree, char* start, char* end)
 
 }
 
-float EvaluateTree(Node* tree)
+float EvaluateTree(Node* tree) // @TODO: correct order of operations
 {
 
-	switch(tree->Type)
+	if (tree->NumChildren == 0) return tree->Value;
+
+	float total = EvaluateTree(tree->Children);
+
+	size_t i;
+
+	for (i = 1; i < tree->NumChildren; i++)
 	{
 
-		case NUM:
-			return tree->Value;
-			break;
-		case ADD:
-			return EvaluateTree(tree->L) + EvaluateTree(tree->R);
-			break;
-		case SUB:
-			return EvaluateTree(tree->L) - EvaluateTree(tree->R);
-			break;
-		case MUL:
-			return EvaluateTree(tree->L) * EvaluateTree(tree->R);
-			break;
-		case DIV:
-			return EvaluateTree(tree->L) / EvaluateTree(tree->R);
-			break;
+		switch (tree->Operations[i - 1])
+		{
+
+			case '+':
+				total = total + EvaluateTree(tree->Children + i);
+				break;
+			case '-':
+				total = total - EvaluateTree(tree->Children + i);
+				break;
+			case '*':
+				total = total * EvaluateTree(tree->Children + i);
+				break;
+			case '/':
+				total = total / EvaluateTree(tree->Children + i);
+				break;
+
+		}
 
 	}
+
+	return total;
 
 }
 
 void DeleteTree(Node* tree)
 {
 
-	if (tree->Type != NUM)
+	size_t i;
+
+	for (i = 0; i < tree->NumChildren; i++)
 	{
 
-		DeleteTree(tree->L);
-		DeleteTree(tree->R);
+		DeleteTree(tree->Children + i);
 
 	}
 
-	free(tree);
+	free(tree->Operations);
+	if (tree->NumChildren != 0) free(tree->Children);
 
 }
 
@@ -219,7 +229,7 @@ int main(int argc, char** argv)
 		tree = CreateTree(tree, OpString, OpString + len - 1);
 		value = EvaluateTree(tree);
 		DeleteTree(tree);
-
+		free(tree);
 		printf("Value: %f\n", value);
 
 		free(OpString);
