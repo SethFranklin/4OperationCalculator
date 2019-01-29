@@ -40,6 +40,8 @@ char* InputString(FILE* fp, size_t size)
 
 	}
 
+	str[len++] = '\0';
+
 	return realloc(str, sizeof(char) * len);
 
 }
@@ -60,8 +62,8 @@ Node* CreateTree(Node* tree, char* start, char* end)
 
 	int brackpos = 0; // ( = +1, ) = -1
 
-	char* firstopen;
-	char* lastclose;
+	char* firstopen = NULL;
+	char* lastclose = NULL;
 
 	char* i = start;
 	char a;
@@ -117,8 +119,13 @@ Node* CreateTree(Node* tree, char* start, char* end)
 		if (firstopen == NULL) // Get value
 		{
 
-			end[1] = '\0';
-			tree->Value = atof(start);
+			size_t length = 1 + end - start;
+			char* evalstr = malloc((1 + length) * sizeof(char));
+			evalstr[length] = '\0';
+			strncpy(evalstr, start, length);
+			printf("%s\n", evalstr);
+			tree->Value = atof(evalstr);
+			free(evalstr);
 
 		}
 		else // Paranthesis recursion
